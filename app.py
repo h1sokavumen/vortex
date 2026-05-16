@@ -2,22 +2,37 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 app = Flask(__name__)
+# Снимаем ограничение на размер запроса (ставим 100 МБ)
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024 
 CORS(app, resources={r"/api/*": {"origins": "*"}}) 
 
-# База данных
 users = {
     "maloshko": {
         "password": "maksjmka2607", "role": "admin", "sub": True, "balance": 0,
-        "bio": "Основатель Nova Sounds", "avatar": "", "banner": "",
-        "pinned_tracks": [] # Список ID прикрепленных треков
+        "bio": "Основатель Nova Sounds", "avatar": "", "banner": "", "pinned_tracks": []
     }
 }
-
 tracks = []
 
 @app.route('/api/recommendations', methods=['GET'])
 def get_recommendations():
     return jsonify({"status": "success", "data": tracks})
+
+# ПОИСК ДРУЗЕЙ
+@app.route('/api/users/search', methods=['POST'])
+def search_users():
+    data = request.json
+    query = data.get('query', '').lower()
+    # Ищем всех пользователей, чей ник содержит запрос
+    found = []
+    for username, info in users.items():
+        if query in username.lower():
+            found.append({
+                "username": username,
+                "avatar": info.get('avatar', ''),
+                "bio": info.get('bio', '')
+            })
+    return jsonify({"status": "success", "users": found})
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -44,33 +59,6 @@ def update_profile():
         return jsonify({"status": "success"})
     return jsonify({"status": "error"}), 404
 
-# ПРИКРЕПИТЬ ТРЕК К ПРОФИЛЮ
-@app.route('/api/profile/pin', methods=['POST'])
-def pin_track():
-    data = request.json
-    u = data.get('username')
-    track_id = data.get('track_id')
-    if u in users and track_id not in users[u]['pinned_tracks']:
-        users[u]['pinned_tracks'].append(track_id)
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error"})
-
-# ВЫДАЧА ПРАВ ПО НИКУ (АДМИНКА)
-@app.route('/api/admin/grant', methods=['POST'])
-def grant_rights():
-    data = request.json
-    admin = data.get('admin_username')
-    target = data.get('target_user')
-    right = data.get('right') # 'admin' или 'premium'
-
-    if users.get(admin, {}).get('role') == 'admin':
-        if target in users:
-            if right == 'admin': users[target]['role'] = 'admin'
-            if right == 'premium': users[target]['sub'] = True
-            return jsonify({"status": "success", "message": f"Права {right} выданы {target}"})
-        return jsonify({"status": "error", "message": "Пользователь не найден"}), 404
-    return jsonify({"status": "error", "message": "Нет доступа"}), 403
-
 @app.route('/api/admin/add_track', methods=['POST'])
 def add_track():
     data = request.json
@@ -81,6 +69,17 @@ def add_track():
         "url": data.get('url')
     })
     return jsonify({"status": "success"})
+
+@app.route('/api/admin/grant', methods=['POST'])
+def grant_rights():
+    data = request.json
+    if users.get(data.get('admin_username'), {}).get('role') == 'admin':
+        target = data.get('target_user')
+        if target in users:
+            if data.get('right') == 'admin': users[target]['role'] = 'admin'
+            if data.get('right') == 'premium': users[target]['sub'] = True
+            return jsonify({"status": "success", "message": "Готово"})
+    return jsonify({"status": "error"}), 403
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=10000)
